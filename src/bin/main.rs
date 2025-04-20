@@ -28,14 +28,15 @@ fn main() -> ! {
     let peripherals = esp_hal::init(config);
 
     let mut led_pin_a = Output::new(peripherals.GPIO8, Level::Low, OutputConfig::default());
-    
+
+
     // Motor stuff
     let motorpin1 = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
     let motorpin2 = Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default());
     //let mut test_pin = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
 
     //let clock_cfg = PeripheralClockConfig::with_frequency(esp_hal::time::Rate::from_mhz(40)).unwrap();
-    let clock_cfg = PeripheralClockConfig::with_frequency(Rate::from_mhz(32)).unwrap();
+    let clock_cfg = PeripheralClockConfig::with_frequency(Rate::from_mhz(1)).unwrap();
 
     let mut mcpwm = McPwm::new(peripherals.MCPWM0, clock_cfg);
     mcpwm.operator0.set_timer(&mcpwm.timer0);
@@ -45,6 +46,8 @@ fn main() -> ! {
 
     let mut motor1 = Motor::new(motorpin1, motorpin2, pwm_pin_m).unwrap();
 
+
+    // From the template
     esp_alloc::heap_allocator!(size: 72 * 1024);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
