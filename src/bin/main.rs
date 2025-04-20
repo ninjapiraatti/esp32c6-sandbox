@@ -3,13 +3,13 @@
 
 use esp_hal::clock::CpuClock;
 use esp_hal::main;
-use esp_hal::time::{Duration, Instant};
 use esp_hal::timer::timg::TimerGroup;
 use esp_println::println;
 use esp_hal::{
     delay::Delay,
-    gpio::{Io, Level, Output, OutputConfig},
-    mcpwm::{operator::PwmPinConfig, timer::PwmWorkingMode, PeripheralClockConfig, McPwm},
+    gpio::{Level, Output, OutputConfig},
+    mcpwm::{operator::PwmPinConfig, PeripheralClockConfig, McPwm},
+    time::Rate,
 };
 use tb6612fng::{DriveCommand, Motor};
 
@@ -32,9 +32,10 @@ fn main() -> ! {
     // Motor stuff
     let motorpin1 = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
     let motorpin2 = Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default());
-    let mut test_pin = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
+    //let mut test_pin = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
 
-    let clock_cfg = PeripheralClockConfig::with_frequency(esp_hal::time::Rate::from_mhz(40)).unwrap();
+    //let clock_cfg = PeripheralClockConfig::with_frequency(esp_hal::time::Rate::from_mhz(40)).unwrap();
+    let clock_cfg = PeripheralClockConfig::with_frequency(Rate::from_mhz(32)).unwrap();
 
     let mut mcpwm = McPwm::new(peripherals.MCPWM0, clock_cfg);
     mcpwm.operator0.set_timer(&mcpwm.timer0);
