@@ -46,6 +46,8 @@ smoltcp = { version = "0.12.0", default-features = false, features = [
 ] }
 esp-println = { version = "0.11.0", features = ["esp32c6"] }
 
+tb6612fng = "1.0.0"
+
 [profile.dev]
 # Rust debug is too slow.
 # For debug builds always builds with some optimization
