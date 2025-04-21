@@ -8,7 +8,7 @@ use esp_println::println;
 use esp_hal::{
     delay::Delay,
     gpio::{Level, Output, OutputConfig},
-    mcpwm::{operator::PwmPinConfig, PeripheralClockConfig, McPwm},
+    mcpwm::{operator::PwmPinConfig, PeripheralClockConfig, McPwm, timer::PwmWorkingMode},
     time::Rate,
 };
 use tb6612fng::{DriveCommand, Motor};
@@ -29,23 +29,25 @@ fn main() -> ! {
 
     let mut led_pin_a = Output::new(peripherals.GPIO8, Level::Low, OutputConfig::default());
 
-
     // Motor stuff
-    let motorpin1 = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
-    let motorpin2 = Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default());
-    //let mut test_pin = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
+    let mut motorpin1 = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
+    let mut motorpin2 = Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default());
+    let mut test_pin = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
+    let mut stdby_pin = Output::new(peripherals.GPIO0, Level::Low, OutputConfig::default());
 
-    //let clock_cfg = PeripheralClockConfig::with_frequency(esp_hal::time::Rate::from_mhz(40)).unwrap();
-    let clock_cfg = PeripheralClockConfig::with_frequency(Rate::from_mhz(1)).unwrap();
-
+    let clock_cfg = PeripheralClockConfig::with_frequency(Rate::from_mhz(40)).unwrap();
+    let pwm_pin = peripherals.GPIO4;
     let mut mcpwm = McPwm::new(peripherals.MCPWM0, clock_cfg);
     mcpwm.operator0.set_timer(&mcpwm.timer0);
-    let pwm_pin = peripherals.GPIO4;
-
-    let pwm_pin_m = mcpwm.operator0.with_pin_a(pwm_pin, PwmPinConfig::UP_ACTIVE_HIGH);
-
+    let mut pwm_pin_m = mcpwm.operator0.with_pin_a(pwm_pin, PwmPinConfig::UP_ACTIVE_HIGH);
+    //pwm_pin_m.set_timestamp(50);
     let mut motor1 = Motor::new(motorpin1, motorpin2, pwm_pin_m).unwrap();
 
+    //let clock_cfg = PeripheralClockConfig::with_frequency(esp_hal::time::Rate::from_mhz(40)).unwrap();
+    let timer_clock_cfg = clock_cfg
+        .timer_clock_with_frequency(99, PwmWorkingMode::Increase, Rate::from_khz(20))
+        .unwrap();
+    mcpwm.timer0.start(timer_clock_cfg);
 
     // From the template
     esp_alloc::heap_allocator!(size: 72 * 1024);
@@ -61,13 +63,16 @@ fn main() -> ! {
     let delay = Delay::new();
 
     loop {
+        stdby_pin.set_high();
+        test_pin.set_high();
         delay.delay_millis(2500);
-        led_pin_a.set_level(Level::High);
+
+        //led_pin_a.set_level(Level::High);
         println!("Debug: {:?}", led_pin_a.is_set_high());
         motor1.drive(DriveCommand::Forward(100)).expect("could set drive speed");
         delay.delay_millis(2500);
         led_pin_a.set_level(Level::Low);
-        led_pin_a.toggle();
+        //led_pin_a.toggle();
         println!("Debug: {:?}", led_pin_a.is_set_high());
         motor1.drive(DriveCommand::Forward(0)).expect("could set drive speed");
     }
