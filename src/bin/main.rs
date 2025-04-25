@@ -10,8 +10,15 @@ use esp_hal::{
     gpio::{Level, Output, OutputConfig},
     mcpwm::{operator::PwmPinConfig, PeripheralClockConfig, McPwm, timer::PwmWorkingMode},
     time::Rate,
+    rmt::Rmt,
 };
 use tb6612fng::{DriveCommand, Motor};
+use esp_hal_smartled::{smartLedBuffer, SmartLedsAdapter};
+use smart_leds::{
+    brightness, gamma,
+    hsv::{hsv2rgb, Hsv},
+    SmartLedsWrite,
+};
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -29,6 +36,19 @@ fn main() -> ! {
 
     let mut test_pin = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
     //let mut led_pin_a = Output::new(peripherals.GPIO8, Level::Low, OutputConfig::default());
+    
+    // LED stuff
+    let led_pin = peripherals.GPIO8;
+    let led_freq = Rate::from_mhz(80);
+    let rmt = Rmt::new(peripherals.RMT, led_freq).unwrap();
+    let rmt_buffer = smartLedBuffer!(1);
+    let mut led = SmartLedsAdapter::new(rmt.channel0, led_pin, rmt_buffer);
+    let mut color = Hsv {
+        hue: 0,
+        sat: 255,
+        val: 255,
+    };
+    let mut data;
 
     // Motor stuff
     let motor_a_pin1 = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
@@ -66,11 +86,25 @@ fn main() -> ! {
         
         motor_a.drive(DriveCommand::Forward(100)).expect("could set drive speed");
         println!("Debug: {:?}", motor_a.current_drive_command());
-        delay.delay_millis(2500);
+        //delay.delay_millis(2500);
 
         motor_a.drive(DriveCommand::Backward(100)).expect("could set drive speed");
         println!("Debug: {:?}", motor_a.current_drive_command());
-        delay.delay_millis(2500);
+        //delay.delay_millis(2500);
+
+        for hue in 0..=255 {
+            color.hue = hue;
+            // Convert from the HSV color space (where we can easily transition from one
+            // color to the other) to the RGB color space that we can then send to the LED
+            data = [hsv2rgb(color)];
+            println!("Color: {:?}", color.hue);
+            // When sending to the LED, we do a gamma correction first (see smart_leds
+            // documentation for details) and then limit the brightness to 10 out of 255 so
+            // that the output it's not too bright.
+            led.write(brightness(gamma(data.iter().cloned()), 7))
+                .unwrap();
+            delay.delay_millis(20);
+        }
     }
 
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-beta.0/examples/src/bin
