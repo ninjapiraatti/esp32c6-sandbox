@@ -1,9 +1,11 @@
 #![no_std]
 #![no_main]
 
+use embedded_hal::pwm::SetDutyCycle;
+use embedded_hal::digital::OutputPin;
 use core::cell::RefCell;
 use critical_section::Mutex;
-use esp_hal::clock::CpuClock;
+use esp_hal::{clock::CpuClock};
 use esp_hal::main;
 use esp_hal::timer::timg::TimerGroup;
 use esp_println::println;
@@ -40,21 +42,23 @@ fn main() -> ! {
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
+    //let peripherals = esp_hal::init(esp_hal::Config::default());
     let mut io = Io::new(peripherals.IO_MUX);
-
-    // Rotary stuff
+    
+    // Interrupt stuff
     let config = InputConfig::default().with_pull(Pull::Up);
-    let clk = Input::new(peripherals.GPIO22, config);
-    let dt = Input::new(peripherals.GPIO21, config);
     let switch = peripherals.GPIO20;
     io.set_interrupt_handler(interrupt_handler);
     let mut button = Input::new(switch, config);
-    let mut encoder = Rotary::new(clk, dt);
-
     critical_section::with(|cs| {
         button.listen(Event::FallingEdge);
         BUTTON.borrow_ref_mut(cs).replace(button)
     });
+
+    // Rotary encoder
+    let clk = Input::new(peripherals.GPIO22, config);
+    let dt = Input::new(peripherals.GPIO21, config);
+    let mut encoder = Rotary::new(clk, dt);
 
     //let mut test_pin = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
     //let mut led_pin_a = Output::new(peripherals.GPIO8, Level::Low, OutputConfig::default());
@@ -70,7 +74,7 @@ fn main() -> ! {
         sat: 255,
         val: 255,
     };
-    //let mut data;
+    let mut data;
 
     // Motor stuff
     let motor_a_pin1 = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
@@ -105,29 +109,11 @@ fn main() -> ! {
     let mut pos: isize = 0;
 
     loop {
-        motor_a.drive(DriveCommand::Forward(100)).expect("could set drive speed");
-        //println!("Debug: {:?}", motor_a.current_drive_command());
-        //delay.delay_millis(2500);
-
-        motor_a.drive(DriveCommand::Backward(100)).expect("could set drive speed");
-        //println!("Debug: {:?}", motor_a.current_drive_command());
-        //delay.delay_millis(2500);
-
-        /*
-        for hue in 0..=255 {
-            color.hue = hue;
-            // Convert from the HSV color space (where we can easily transition from one
-            // color to the other) to the RGB color space that we can then send to the LED
-            data = [hsv2rgb(color)];
-            //println!("Color: {:?}", color.hue);
-            // When sending to the LED, we do a gamma correction first (see smart_leds
-            // documentation for details) and then limit the brightness to 10 out of 255 so
-            // that the output it's not too bright.
-            led.write(brightness(gamma(data.iter().cloned()), 7))
+        color.hue = pos as u8;
+        data = [hsv2rgb(color)];
+        led.write(brightness(gamma(data.iter().cloned()), 7))
                 .unwrap();
-            delay.delay_millis(20);
-        }
-        */
+            
         println!("Pos: {:?}", pos);
         match encoder.update().unwrap() {
             Direction::Clockwise => {
@@ -137,6 +123,9 @@ fn main() -> ! {
                 pos -= 1;
             }
             Direction::None => {}
+        }
+        if pos > 10 && pos < 40 {
+            run_motor(&mut motor_a);
         }
     }
 
@@ -177,4 +166,21 @@ fn interrupt_handler() {
             .unwrap()
             .clear_interrupt()
     });
+}
+
+fn run_motor<T, U, V>(motor: &mut Motor<T, U, V>) 
+where
+    T: OutputPin,
+    U: OutputPin,
+    V: SetDutyCycle,
+{
+    let delay = Delay::new();
+    motor.drive(DriveCommand::Forward(100)).expect("could set drive speed");
+    println!("Debug: {:?}", motor.current_drive_command());
+    delay.delay_millis(100);
+
+    motor.drive(DriveCommand::Backward(100)).expect("could set drive speed");
+    println!("Debug: {:?}", motor.current_drive_command());
+    delay.delay_millis(100);
+    motor.drive(DriveCommand::Stop).expect("could set drive speed");
 }

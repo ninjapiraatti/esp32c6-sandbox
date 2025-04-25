@@ -624,6 +624,7 @@ dependencies = [
  "cfg-if",
  "critical-section",
  "embassy-net",
+ "embedded-hal 1.0.0",
  "embedded-io",
  "esp-alloc",
  "esp-hal",
