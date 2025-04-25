@@ -1,16 +1,20 @@
 #![no_std]
 #![no_main]
 
+use core::cell::RefCell;
+use critical_section::Mutex;
 use esp_hal::clock::CpuClock;
 use esp_hal::main;
 use esp_hal::timer::timg::TimerGroup;
 use esp_println::println;
 use esp_hal::{
     delay::Delay,
-    gpio::{Level, Output, OutputConfig},
+    gpio::{Level, Input, InputConfig, Event, Output, Io, OutputConfig, Pull},
     mcpwm::{operator::PwmPinConfig, PeripheralClockConfig, McPwm, timer::PwmWorkingMode},
     time::Rate,
     rmt::Rmt,
+    handler,
+    ram,
 };
 use tb6612fng::{DriveCommand, Motor};
 use esp_hal_smartled::{smartLedBuffer, SmartLedsAdapter};
@@ -19,6 +23,8 @@ use smart_leds::{
     hsv::{hsv2rgb, Hsv},
     SmartLedsWrite,
 };
+
+static BUTTON: Mutex<RefCell<Option<Input>>> = Mutex::new(RefCell::new(None));
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -33,8 +39,20 @@ fn main() -> ! {
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
+    let mut io = Io::new(peripherals.IO_MUX);
 
-    let mut test_pin = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
+    // Button stuff
+    let button = peripherals.GPIO22;
+    io.set_interrupt_handler(interrupt_handler);
+    let config = InputConfig::default().with_pull(Pull::Up);
+    let mut button = Input::new(button, config);
+
+    critical_section::with(|cs| {
+        button.listen(Event::FallingEdge);
+        BUTTON.borrow_ref_mut(cs).replace(button)
+    });
+
+    //let mut test_pin = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
     //let mut led_pin_a = Output::new(peripherals.GPIO8, Level::Low, OutputConfig::default());
     
     // LED stuff
@@ -82,14 +100,12 @@ fn main() -> ! {
     let delay = Delay::new();
 
     loop {
-        test_pin.set_high();
-        
         motor_a.drive(DriveCommand::Forward(100)).expect("could set drive speed");
-        println!("Debug: {:?}", motor_a.current_drive_command());
+        //println!("Debug: {:?}", motor_a.current_drive_command());
         //delay.delay_millis(2500);
 
         motor_a.drive(DriveCommand::Backward(100)).expect("could set drive speed");
-        println!("Debug: {:?}", motor_a.current_drive_command());
+        //println!("Debug: {:?}", motor_a.current_drive_command());
         //delay.delay_millis(2500);
 
         for hue in 0..=255 {
@@ -108,4 +124,40 @@ fn main() -> ! {
     }
 
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-beta.0/examples/src/bin
+}
+
+#[handler]
+#[ram]
+fn interrupt_handler() {
+    println!("Button pressed");
+    cfg_if::cfg_if! {
+        if #[cfg(any(feature = "esp32", feature = "esp32s2", feature = "esp32s3"))] {
+            esp_println::println!(
+                "GPIO Interrupt with priority {}",
+                esp_hal::xtensa_lx::interrupt::get_level()
+            );
+        } else {
+            println!("GPIO Interrupt");
+        }
+    }
+
+    if critical_section::with(|cs| {
+        BUTTON
+            .borrow_ref_mut(cs)
+            .as_mut()
+            .unwrap()
+            .is_interrupt_set()
+    }) {
+        println!("Button pressed");
+    } else {
+        println!("Button NOT pressed");
+    }
+
+    critical_section::with(|cs| {
+        BUTTON
+            .borrow_ref_mut(cs)
+            .as_mut()
+            .unwrap()
+            .clear_interrupt()
+    });
 }
