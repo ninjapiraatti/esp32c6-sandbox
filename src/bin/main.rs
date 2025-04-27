@@ -5,7 +5,7 @@ use embedded_hal::pwm::SetDutyCycle;
 use embedded_hal::digital::OutputPin;
 use core::cell::RefCell;
 use critical_section::Mutex;
-use esp_hal::{clock::CpuClock};
+use esp_hal::clock::CpuClock;
 use esp_hal::main;
 use esp_hal::timer::timg::TimerGroup;
 use esp_println::println;
@@ -28,6 +28,8 @@ use smart_leds::{
 use rotary_encoder_hal::{Direction, Rotary};
 
 static BUTTON: Mutex<RefCell<Option<Input>>> = Mutex::new(RefCell::new(None));
+// Flag to indicate a button press event occurred in the interrupt
+static BUTTON_PRESSED: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -46,7 +48,7 @@ fn main() -> ! {
     let mut io = Io::new(peripherals.IO_MUX);
     
     // Interrupt stuff
-    let config = InputConfig::default().with_pull(Pull::Up);
+    let config = InputConfig::default().with_pull(Pull::Down);
     let switch = peripherals.GPIO20;
     io.set_interrupt_handler(interrupt_handler);
     let mut button = Input::new(switch, config);
@@ -105,7 +107,7 @@ fn main() -> ! {
     )
     .unwrap();
 
-    let delay = Delay::new();
+    //let delay = Delay::new();
     let mut pos: isize = 0;
 
     loop {
@@ -113,19 +115,35 @@ fn main() -> ! {
         data = [hsv2rgb(color)];
         led.write(brightness(gamma(data.iter().cloned()), 7))
                 .unwrap();
-            
-        println!("Pos: {:?}", pos);
+
+        // Check if the button was pressed in the interrupt handler
+        let button_was_pressed = critical_section::with(|cs| {
+            let was_pressed = *BUTTON_PRESSED.borrow_ref(cs);
+            if was_pressed {
+                // Reset the flag after we've detected it
+                *BUTTON_PRESSED.borrow_ref_mut(cs) = false;
+            }
+            was_pressed
+        });
+
+        // Run the motor if button was pressed
+        if button_was_pressed {
+            println!("Running motor due to button press");
+            run_motor(&mut motor_a);
+        }
+
+        //println!("Pos: {:?}", pos);
+        //println!("Button state: {:?}", button.is_interrupt_set());
         match encoder.update().unwrap() {
             Direction::Clockwise => {
                 pos += 1;
+                println!("Pos: {:?}", pos);
             }
             Direction::CounterClockwise => {
                 pos -= 1;
+                println!("Pos: {:?}", pos);
             }
             Direction::None => {}
-        }
-        if pos > 10 && pos < 40 {
-            run_motor(&mut motor_a);
         }
     }
 
@@ -134,19 +152,8 @@ fn main() -> ! {
 
 #[handler]
 #[ram]
+// Doesn't fire with the rotary button but does with dt/clk
 fn interrupt_handler() {
-    println!("Button pressed");
-    cfg_if::cfg_if! {
-        if #[cfg(any(feature = "esp32", feature = "esp32s2", feature = "esp32s3"))] {
-            esp_println::println!(
-                "GPIO Interrupt with priority {}",
-                esp_hal::xtensa_lx::interrupt::get_level()
-            );
-        } else {
-            println!("GPIO Interrupt");
-        }
-    }
-
     if critical_section::with(|cs| {
         BUTTON
             .borrow_ref_mut(cs)
@@ -155,6 +162,10 @@ fn interrupt_handler() {
             .is_interrupt_set()
     }) {
         println!("Button pressed");
+        // Set the flag to true when button is pressed
+        critical_section::with(|cs| {
+            *BUTTON_PRESSED.borrow_ref_mut(cs) = true;
+        });
     } else {
         println!("Button NOT pressed");
     }
