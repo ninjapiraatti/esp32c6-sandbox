@@ -53,7 +53,7 @@ fn main() -> ! {
     io.set_interrupt_handler(interrupt_handler);
     let mut button = Input::new(switch, config);
     critical_section::with(|cs| {
-        button.listen(Event::FallingEdge);
+        button.listen(Event::HighLevel);
         BUTTON.borrow_ref_mut(cs).replace(button)
     });
 
@@ -113,8 +113,7 @@ fn main() -> ! {
     loop {
         color.hue = pos as u8;
         data = [hsv2rgb(color)];
-        led.write(brightness(gamma(data.iter().cloned()), 7))
-                .unwrap();
+        led.write(brightness(gamma(data.iter().cloned()), 10)).unwrap();
 
         // Check if the button was pressed in the interrupt handler
         let button_was_pressed = critical_section::with(|cs| {
@@ -161,11 +160,21 @@ fn interrupt_handler() {
             .unwrap()
             .is_interrupt_set()
     }) {
-        println!("Button pressed");
-        // Set the flag to true when button is pressed
-        critical_section::with(|cs| {
-            *BUTTON_PRESSED.borrow_ref_mut(cs) = true;
+        let is_button_low = critical_section::with(|cs| {
+            BUTTON
+                .borrow_ref_mut(cs)
+                .as_mut()
+                .unwrap()
+                .is_low()
         });
+        
+        println!("Button pin is low: {}", is_button_low);
+
+        if is_button_low == false {
+            critical_section::with(|cs| {
+                *BUTTON_PRESSED.borrow_ref_mut(cs) = true;
+            });
+        }
     } else {
         println!("Button NOT pressed");
     }
