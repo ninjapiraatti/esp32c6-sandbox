@@ -3,6 +3,12 @@
 
 use embedded_hal::pwm::SetDutyCycle;
 use embedded_hal::digital::OutputPin;
+use embedded_graphics::{
+    mono_font::{ascii::FONT_6X10, MonoTextStyleBuilder},
+    pixelcolor::BinaryColor,
+    prelude::*,
+    text::{Baseline, Text},
+};
 use core::cell::RefCell;
 use critical_section::Mutex;
 use esp_hal::clock::CpuClock;
@@ -106,7 +112,7 @@ fn main() -> ! {
 
     // OLED stuff
     let mut reset = Output::new(peripherals.GPIO13, Level::Low, OutputConfig::default());
-    let i2c = I2c::new(
+    let mut i2c = I2c::new(
         peripherals.I2C0,
         Config::default().with_frequency(Rate::from_khz(400)),
     )
@@ -114,15 +120,36 @@ fn main() -> ! {
     .with_sda(peripherals.GPIO19)
     .with_scl(peripherals.GPIO18);
     println!("Did half of OLED stuff");
+    println!("Starting I2C scan...");
+    for addr in 0..=127 {
+        let result = i2c.write(addr, &[0]);
+        if result.is_ok() {
+            println!("I2C device found at address: 0x{:02X}", addr);
+        } else {
+            println!("No device found");
+        }
+    }
     let interface = I2CDisplayInterface::new(i2c);
     let mut display = Ssd1306::new(
         interface,
         DisplaySize128x64,
         DisplayRotation::Rotate0,
     ).into_buffered_graphics_mode();
-    display.reset(&mut reset, &mut delay).unwrap();
+    //display.reset(&mut reset, &mut delay).unwrap();
     display.init().unwrap();
-    display.set_pixel(32, 32, true);
+    let text_style = MonoTextStyleBuilder::new()
+        .font(&FONT_6X10)
+        .text_color(BinaryColor::On)
+        .build();
+
+    Text::with_baseline("Hello world!", Point::zero(), text_style, Baseline::Top)
+        .draw(&mut display)
+        .unwrap();
+
+    Text::with_baseline("Hello Rust!", Point::new(0, 16), text_style, Baseline::Top)
+        .draw(&mut display)
+        .unwrap();
+
     display.flush().unwrap();
     println!("Did OLED display stuff");
 
