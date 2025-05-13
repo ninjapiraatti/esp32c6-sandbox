@@ -17,6 +17,7 @@ use esp_hal::{
     rmt::Rmt,
     handler,
     ram,
+    i2c::master::{I2c, Config},
 };
 use tb6612fng::{DriveCommand, Motor};
 use esp_hal_smartled::{smartLedBuffer, SmartLedsAdapter};
@@ -26,6 +27,7 @@ use smart_leds::{
     SmartLedsWrite,
 };
 use rotary_encoder_hal::{Direction, Rotary};
+use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
 
 static BUTTON: Mutex<RefCell<Option<Input>>> = Mutex::new(RefCell::new(None));
 // Flag to indicate a button press event occurred in the interrupt
@@ -42,6 +44,7 @@ extern crate alloc;
 fn main() -> ! {
     // generator version: 0.3.1
 
+    let mut delay = Delay::new();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
     //let peripherals = esp_hal::init(esp_hal::Config::default());
@@ -56,11 +59,13 @@ fn main() -> ! {
         button.listen(Event::HighLevel);
         BUTTON.borrow_ref_mut(cs).replace(button)
     });
+    println!("Did interrupt stuff");
 
     // Rotary encoder
     let clk = Input::new(peripherals.GPIO22, config);
     let dt = Input::new(peripherals.GPIO21, config);
     let mut encoder = Rotary::new(clk, dt);
+    println!("Did rotary encoder stuff");
 
     //let mut test_pin = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
     //let mut led_pin_a = Output::new(peripherals.GPIO8, Level::Low, OutputConfig::default());
@@ -77,6 +82,7 @@ fn main() -> ! {
         val: 255,
     };
     let mut data;
+    println!("Did RGB LED stuff");
 
     // Motor stuff
     let motor_a_pin1 = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
@@ -95,6 +101,30 @@ fn main() -> ! {
         .unwrap();
     mcpwm.timer0.start(timer_clock_cfg);
     stdby_pin.set_high();
+    println!("Did motor stuff");
+
+
+    // OLED stuff
+    let mut reset = Output::new(peripherals.GPIO13, Level::Low, OutputConfig::default());
+    let i2c = I2c::new(
+        peripherals.I2C0,
+        Config::default().with_frequency(Rate::from_khz(400)),
+    )
+    .unwrap()
+    .with_sda(peripherals.GPIO19)
+    .with_scl(peripherals.GPIO18);
+    println!("Did half of OLED stuff");
+    let interface = I2CDisplayInterface::new(i2c);
+    let mut display = Ssd1306::new(
+        interface,
+        DisplaySize128x64,
+        DisplayRotation::Rotate0,
+    ).into_buffered_graphics_mode();
+    display.reset(&mut reset, &mut delay).unwrap();
+    display.init().unwrap();
+    display.set_pixel(32, 32, true);
+    display.flush().unwrap();
+    println!("Did OLED display stuff");
 
     // From the template
     esp_alloc::heap_allocator!(size: 72 * 1024);
@@ -106,8 +136,8 @@ fn main() -> ! {
         peripherals.RADIO_CLK,
     )
     .unwrap();
+    println!("Did stuff from the template");
 
-    //let delay = Delay::new();
     let mut pos: isize = 0;
 
     loop {
@@ -144,6 +174,8 @@ fn main() -> ! {
             }
             Direction::None => {}
         }
+        // Show something in the OLED
+        
     }
 
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-beta.0/examples/src/bin

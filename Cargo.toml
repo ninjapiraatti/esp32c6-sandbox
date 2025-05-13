@@ -52,6 +52,7 @@ tb6612fng = "1.0.0"
 esp-hal-smartled = { path = "./esp-hal-smartled", features = ["esp32c6"] }
 rotary-encoder-hal = "0.6.0"
 embedded-hal = "1.0.0"
+ssd1306 = "0.10.0"
 
 [profile.dev]
 # Rust debug is too slow.
